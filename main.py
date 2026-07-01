@@ -8,6 +8,7 @@ from functions.get_files_info import get_files_info, schema_get_files_info
 from functions.get_file_content import get_file_content, schema_get_file_content
 from functions.write_file import write_file, schema_write_file
 from functions.run_python_file import run_python_file, schema_run_python_file
+from call_function import call_function, available_functions
 
 def main():
     load_dotenv()
@@ -27,15 +28,6 @@ def main():
         types.Content(role="user", parts=[types.Part(text=args.user_prompt)])
     ]
 
-    available_functions = types.Tool(
-        function_declarations=[
-            schema_get_files_info,
-            schema_get_file_content,
-            schema_write_file,
-            schema_run_python_file,
-        ],
-)
-
     response = client.models.generate_content(model="gemini-2.5-flash", 
     contents=messages,
     config=types.GenerateContentConfig(system_instruction=system_prompt, tools=[available_functions]),
@@ -50,11 +42,20 @@ def main():
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
     
     if response.function_calls:
+        list_func_results = []
+
         for function_call in response.function_calls:
-            print(f"Calling function: {function_call.name}({function_call.args})")
+            function_call_result = call_function(function_call, args.verbose)
+            if not function_call_result.parts or not function_call_result.parts[0].function_response or not function_call_result.parts[0].function_response.response:
+                raise RuntimeError("call_function failed unexpectedly")
+
+            if args.verbose:
+                print(f"-> {function_call_result.parts[0].function_response.response}")
+
+            list_func_results.append(function_call_result.parts[0])
+
     else:
         print(response.text)
-
 
 if __name__ == "__main__":
     main()
