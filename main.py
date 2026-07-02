@@ -1,18 +1,15 @@
 import os
+import sys
+from config import MAX_ITERS
 import argparse
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+from openai import OpenAI
 from prompts import system_prompt
-from functions.get_files_info import get_files_info, schema_get_files_info
-from functions.get_file_content import get_file_content, schema_get_file_content
-from functions.write_file import write_file, schema_write_file
-from functions.run_python_file import run_python_file, schema_run_python_file
 from call_function import call_function, available_functions
 
 def main():
     load_dotenv()
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("OPENROUTER_API_KEY")
 
     parser = argparse.ArgumentParser(description="Chatbot")
     parser.add_argument("user_prompt", type=str, help="User prompt")
@@ -22,40 +19,44 @@ def main():
     if not api_key:
         raise RuntimeError("api_key is None type")
 
-    client = genai.Client(api_key=api_key)
-
-    messages: list[types.Content] = [
-        types.Content(role="user", parts=[types.Part(text=args.user_prompt)])
-    ]
-
-    response = client.models.generate_content(model="gemini-2.5-flash", 
-    contents=messages,
-    config=types.GenerateContentConfig(system_instruction=system_prompt, tools=[available_functions]),
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
     )
 
-    if not response.usage_metadata:
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": args.user_prompt},
+    ]
+
+    
+def generate_content(client: OpenAI, messages: list, verbose: bool) -> str | None:
+    response = client.chat.completions.create(
+        model="openrouter/free",
+        messages=messages,
+        tools=available_functions,
+    )
+    
+    if not response.usage:
         raise RuntimeError("metadata is None Type")
 
-    if args.verbose:
-        print(f"User prompt: {args.user_prompt}")    
-        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-    
-    if response.function_calls:
-        list_func_results = []
+    if verbose:  
+        print(f"Prompt tokens: {response.usage.prompt_tokens}")
+        print(f"Response tokens: {response.usage.completion_tokens}")
 
-        for function_call in response.function_calls:
-            function_call_result = call_function(function_call, args.verbose)
-            if not function_call_result.parts or not function_call_result.parts[0].function_response or not function_call_result.parts[0].function_response.response:
-                raise RuntimeError("call_function failed unexpectedly")
+    message = response.choices[0].message
+    messages.append(message)
 
-            if args.verbose:
-                print(f"-> {function_call_result.parts[0].function_response.response}")
-
-            list_func_results.append(function_call_result.parts[0])
-
+    if message.tool_calls:
+        for tool_call in message.tool_calls:
+            result_message = call_function(tool_call, verbose)
+            if not result_message.get("content"):
+                raise RuntimeError(f"Empty function response for {tool_call.function.name}")
+            messages.append(result_message)
+            if verbose:
+                print(f"-> {result_message['content']}")
     else:
-        print(response.text)
+        return message.content
 
 if __name__ == "__main__":
     main()
