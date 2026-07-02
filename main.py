@@ -29,6 +29,16 @@ def main():
         {"role": "user", "content": args.user_prompt},
     ]
 
+    for i in range(20):
+        result = generate_content(client, messages, args.verbose)
+
+        if result:
+            print(result)
+            return 
+    
+    print("Maximum number of iterations processed without a final result")
+    sys.exit(1)
+
     
 def generate_content(client: OpenAI, messages: list, verbose: bool) -> str | None:
     response = client.chat.completions.create(

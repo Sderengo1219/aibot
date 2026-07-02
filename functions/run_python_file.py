@@ -55,6 +55,13 @@ schema_run_python_file = {
                     "type": "string",
                     "description": "File path of the Python file to be run",
                 },
+                "args": {
+                    "type": "array",
+                    "items":{
+                        "type": "string"
+                    },
+                    "description": "list of command line arguments each element in list with be a string",
+                },
             },
         },
     },
